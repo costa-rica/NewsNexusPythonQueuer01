@@ -3,7 +3,7 @@ import subprocess
 import threading
 import time
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 bp_deduper = Blueprint('deduper', __name__)
 
@@ -25,12 +25,12 @@ def create_job_id():
     job_counter += 1
     return job_id
 
-def run_deduper_job(job_id, report_id=None):
+def run_deduper_job(job_id):
     """Run the deduper microservice in a separate thread"""
     try:
         jobs[job_id]['status'] = JobStatus.RUNNING
         # jobs[job_id]['started_at'] = datetime.utcnow().isoformat()
-        jobs[job_id]['started_at'] = datetime.isoformat() # is the utcnow() needed?
+        jobs[job_id]['started_at'] = datetime.now(timezone.utc).isoformat()
 
         # Get deduper path from environment
         deduper_path = os.getenv('PATH_TO_MICROSERVICE_DEDUPER')
@@ -63,7 +63,7 @@ def run_deduper_job(job_id, report_id=None):
         jobs[job_id]['stdout'] = f"Process output streamed to terminal"
         jobs[job_id]['stderr'] = f"Process errors streamed to terminal"
         jobs[job_id]['exit_code'] = process.returncode
-        jobs[job_id]['completed_at'] = datetime.utcnow().isoformat()
+        jobs[job_id]['completed_at'] = datetime.now(timezone.utc).isoformat()
 
         if process.returncode == 0:
             jobs[job_id]['status'] = JobStatus.COMPLETED
@@ -73,38 +73,23 @@ def run_deduper_job(job_id, report_id=None):
     except Exception as e:
         jobs[job_id]['status'] = JobStatus.FAILED
         jobs[job_id]['error'] = str(e)
-        jobs[job_id]['completed_at'] = datetime.utcnow().isoformat()
+        jobs[job_id]['completed_at'] = datetime.now(timezone.utc).isoformat()
 
-@bp_deduper.route('/deduper/jobs', methods=['POST'])
+@bp_deduper.route('/deduper/jobs', methods=['GET'])
 def create_deduper_job():
-    """POST /deduper/jobs - Enqueue a deduper job and return { jobId, status }"""
+    """GET /deduper/jobs - Trigger a deduper job and return { jobId, status }"""
     try:
-        data = request.get_json() or {}
-        report_id = data.get('reportId')
-
-        # Check for existing job with same reportId (idempotency)
-        if report_id:
-            for job_id, job_data in jobs.items():
-                if (job_data.get('report_id') == report_id and
-                    job_data['status'] in [JobStatus.PENDING, JobStatus.RUNNING]):
-                    return jsonify({
-                        'jobId': job_id,
-                        'status': job_data['status'],
-                        'message': 'Job already exists for this reportId'
-                    }), 200
-
         # Create new job
         job_id = create_job_id()
         jobs[job_id] = {
             'id': job_id,
             'status': JobStatus.PENDING,
-            'report_id': report_id,
-            'created_at': datetime.utcnow().isoformat(),
+            'created_at': datetime.now(timezone.utc).isoformat(),
             'logs': []
         }
 
         # Start job in background thread
-        thread = threading.Thread(target=run_deduper_job, args=(job_id, report_id))
+        thread = threading.Thread(target=run_deduper_job, args=(job_id,))
         thread.daemon = True
         thread.start()
 
@@ -147,8 +132,6 @@ def get_job_status(job_id):
     if 'error' in job:
         response['error'] = job['error']
 
-    if 'report_id' in job:
-        response['reportId'] = job['report_id']
 
     return jsonify(response)
 
@@ -175,7 +158,7 @@ def cancel_job(job_id):
                 job['process'].kill()
 
         job['status'] = JobStatus.CANCELLED
-        job['completed_at'] = datetime.utcnow().isoformat()
+        job['completed_at'] = datetime.now(timezone.utc).isoformat()
 
         return jsonify({
             'jobId': job_id,
@@ -186,34 +169,18 @@ def cancel_job(job_id):
     except Exception as e:
         return jsonify({'error': f'Failed to cancel job: {str(e)}'}), 500
 
-@bp_deduper.route('/deduper/jobs', methods=['GET'])
+@bp_deduper.route('/deduper/jobs/list', methods=['GET'])
 def get_jobs():
-    """GET /deduper/jobs?reportId=123 - Check for existing jobs (idempotency)"""
-    report_id = request.args.get('reportId')
-
-    if report_id:
-        # Filter jobs by reportId
-        matching_jobs = []
-        for job_id, job_data in jobs.items():
-            if job_data.get('report_id') == report_id:
-                matching_jobs.append({
-                    'jobId': job_id,
-                    'status': job_data['status'],
-                    'createdAt': job_data['created_at'],
-                    'reportId': job_data.get('report_id')
-                })
-        return jsonify({'jobs': matching_jobs})
-    else:
-        # Return all jobs (summary)
-        all_jobs = []
-        for job_id, job_data in jobs.items():
-            all_jobs.append({
-                'jobId': job_id,
-                'status': job_data['status'],
-                'createdAt': job_data['created_at'],
-                'reportId': job_data.get('report_id')
-            })
-        return jsonify({'jobs': all_jobs})
+    """GET /deduper/jobs/list - Get all jobs"""
+    # Return all jobs (summary)
+    all_jobs = []
+    for job_id, job_data in jobs.items():
+        all_jobs.append({
+            'jobId': job_id,
+            'status': job_data['status'],
+            'createdAt': job_data['created_at']
+        })
+    return jsonify({'jobs': all_jobs})
 
 @bp_deduper.route('/deduper/health', methods=['GET'])
 def health_check():
@@ -225,7 +192,7 @@ def health_check():
 
         checks = {
             'status': 'healthy',
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'environment': {
                 'deduper_path_configured': bool(deduper_path),
                 'python_venv_configured': bool(python_venv)
