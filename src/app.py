@@ -1,11 +1,13 @@
-from flask import Flask
-from routes.index import index_bp
+from flask import Flask, request, jsonify
+from routes.index import bp_index
+from routes.deduper import bp_deduper
 
 def create_app():
     app = Flask(__name__)
 
     # Register blueprints
-    app.register_blueprint(index_bp)
+    app.register_blueprint(bp_index)
+    app.register_blueprint(bp_deduper)
 
     return app
 
