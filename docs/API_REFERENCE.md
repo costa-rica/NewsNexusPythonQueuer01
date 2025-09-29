@@ -8,7 +8,7 @@ http://localhost:5000
 ```
 
 ## Content Type Requirements
-All POST, PUT, and PATCH requests must include:
+POST and PUT requests with request bodies must include:
 ```
 Content-Type: application/json
 ```
@@ -38,16 +38,8 @@ curl http://localhost:5000/
 
 All deduper endpoints are prefixed with `/deduper`.
 
-### POST /deduper/jobs
-Enqueue a new deduper job to run the `analyze_fast` command.
-
-**Request Body:**
-```json
-{
-  "reportId": "123",  // Optional: for tracking and idempotency
-  "embeddingThresholdMinimum": 0.8  // Optional: not used by deduper but stored for reference
-}
-```
+### GET /deduper/jobs
+Trigger a new deduper job to run the `analyze_fast` command.
 
 **Response (201 Created):**
 ```json
@@ -57,20 +49,9 @@ Enqueue a new deduper job to run the `analyze_fast` command.
 }
 ```
 
-**Response (200 OK - Existing Job):**
-```json
-{
-  "jobId": 1,
-  "status": "running",
-  "message": "Job already exists for this reportId"
-}
-```
-
 **Example:**
 ```bash
-curl -X POST http://localhost:5000/deduper/jobs \
-  -H "Content-Type: application/json" \
-  -d '{"reportId": "123"}'
+curl http://localhost:5000/deduper/jobs
 ```
 
 ### GET /deduper/jobs/{jobId}
@@ -89,8 +70,7 @@ Fetch detailed status, timestamps, and logs for a specific job.
   "completedAt": "2025-09-28T17:46:15.789Z",
   "exitCode": 0,
   "stdout": "Process output streamed to terminal",
-  "stderr": "Process errors streamed to terminal",
-  "reportId": "123"
+  "stderr": "Process errors streamed to terminal"
 }
 ```
 
@@ -144,57 +124,33 @@ Terminate a running or pending job.
 
 **Example:**
 ```bash
-curl -X POST http://localhost:5000/deduper/jobs/1/cancel \
-  -H "Content-Type: application/json"
+curl -X POST http://localhost:5000/deduper/jobs/1/cancel
 ```
 
-### GET /deduper/jobs
-List jobs with optional filtering by reportId.
+### GET /deduper/jobs/list
+List all jobs.
 
-**Query Parameters:**
-- `reportId` (optional): Filter jobs by report ID
-
-**Response - All Jobs:**
+**Response:**
 ```json
 {
   "jobs": [
     {
       "jobId": 1,
       "status": "completed",
-      "createdAt": "2025-09-28T17:45:30.123Z",
-      "reportId": "123"
+      "createdAt": "2025-09-28T17:45:30.123Z"
     },
     {
       "jobId": 2,
       "status": "running",
-      "createdAt": "2025-09-28T17:50:15.456Z",
-      "reportId": "124"
+      "createdAt": "2025-09-28T17:50:15.456Z"
     }
   ]
 }
 ```
 
-**Response - Filtered by reportId:**
-```json
-{
-  "jobs": [
-    {
-      "jobId": 1,
-      "status": "completed",
-      "createdAt": "2025-09-28T17:45:30.123Z",
-      "reportId": "123"
-    }
-  ]
-}
-```
-
-**Examples:**
+**Example:**
 ```bash
-# Get all jobs
-curl http://localhost:5000/deduper/jobs
-
-# Get jobs for specific reportId
-curl http://localhost:5000/deduper/jobs?reportId=123
+curl http://localhost:5000/deduper/jobs/list
 ```
 
 ### GET /deduper/health
@@ -260,10 +216,10 @@ The service requires these environment variables (configured in `.env`):
 - IDs reset when the service restarts
 - Simple, human-readable format for easy reference
 
-### Idempotency
-- Providing the same `reportId` prevents duplicate job creation
-- If a job with the same `reportId` is pending or running, the existing job details are returned
-- Completed, failed, or cancelled jobs allow new jobs with the same `reportId`
+### Job Creation
+- Each GET request to `/deduper/jobs` creates a new job
+- No idempotency checks - each request creates a separate job
+- Jobs are identified by sequential integer IDs
 
 ---
 
