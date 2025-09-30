@@ -6,7 +6,7 @@ bp_index = Blueprint('index', __name__)
 @bp_index.route('/')
 def home():
     print(f"-- in home page route --")
-    print(f"TEST_ARG: {os.environ.get('TEST_ARG')}")
+    print(f"DOT_ENV_TEST_ARG: {os.environ.get('DOT_ENV_TEST_ARG')}")
     return render_template('index.html')
 
 
