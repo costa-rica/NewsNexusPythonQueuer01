@@ -1,6 +1,7 @@
-from flask import Flask, request, jsonify
-from routes.index import bp_index
-from routes.deduper import bp_deduper
+from flask import Flask
+# to relative (works when importing src.app)
+from .routes.index import bp_index
+from .routes.deduper import bp_deduper
 
 def create_app():
     app = Flask(__name__)
