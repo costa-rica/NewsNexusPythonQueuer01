@@ -28,8 +28,7 @@ Use the virtual environment specified in `.env`:
 source $PATH_TO_PYTHON_VENV/bin/activate
 ```
 
-### Project Structure (To Be Implemented)
-According to README.md, the planned structure is:
+### Project Structure
 ```
 src/
 ├── app.py              # Flask app initialization
@@ -38,22 +37,24 @@ src/
     └── index.py        # Basic routes
 ```
 
-### Required Flask Blueprints
-1. **Deduper Blueprint** (`/jobs/deduper`):
-   - `POST /jobs/deduper` - Enqueue deduper job, return `{ jobId, status }`
-   - `GET /jobs/:id` - Fetch job status, timestamps, logs
-   - `POST /jobs/:id/cancel` - Terminate running job
-   - `GET /jobs?reportId=123` - Check existing jobs (idempotency)
-   - `GET /health` - Health check
+### Flask Blueprints
+1. **Deduper Blueprint** (`/deduper`):
+   - `GET /deduper/jobs` - Create and enqueue deduper job, return `{ jobId, status }`
+   - `GET /deduper/jobs/:id` - Fetch job status, timestamps, logs
+   - `POST /deduper/jobs/:id/cancel` - Terminate running job
+   - `GET /deduper/jobs/list` - List all jobs
+   - `GET /deduper/health` - Health check with environment and job statistics
 
 2. **Index Blueprint**:
    - `GET /` - Return HTML: "News Nexus Python Queuer 01"
 
-### Job Management Requirements
-- Use `subprocess` for asynchronous job execution
-- Capture exit codes and allow status polling
-- Support job cancellation
-- Integrate with PM2 logging (`pm2 logs`)
+### Job Management Implementation
+- Uses `subprocess` for asynchronous job execution in background threads
+- Captures exit codes and provides status polling via job ID
+- Supports job cancellation (terminate/kill processes)
+- Output streams to terminal for PM2 logging visibility (`pm2 logs`)
+- In-memory job storage with sequential integer IDs (resets on service restart)
+- Jobs run the `analyze_fast` command from NewsNexusDeduper02
 
 ## Database Integration
 
