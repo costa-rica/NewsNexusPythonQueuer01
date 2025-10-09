@@ -191,6 +191,68 @@ Service health check and system status.
 curl http://localhost:5000/deduper/health
 ```
 
+### DELETE /deduper/clear-db-table
+Cancel all running/pending deduper jobs and clear the database table used by the deduper microservice.
+
+**Important:** This is a destructive operation that:
+1. Immediately cancels ALL pending and running deduper jobs
+2. Executes the `clear_table -y` command from NewsNexusDeduper02
+3. Clears the ArticleDuplicateAnalysis table in the database
+
+**Response (200 OK):**
+```json
+{
+  "cleared": true,
+  "cancelledJobs": [3, 5, 7],
+  "exitCode": 0,
+  "stdout": "Table cleared successfully...",
+  "stderr": "",
+  "timestamp": "2025-09-28T17:45:30.123Z"
+}
+```
+
+**Response (500 Internal Server Error - Command Failed):**
+```json
+{
+  "cleared": false,
+  "cancelledJobs": [3, 5],
+  "exitCode": 1,
+  "stdout": "",
+  "stderr": "Error clearing table...",
+  "error": "Clear table command failed",
+  "timestamp": "2025-09-28T17:45:30.123Z"
+}
+```
+
+**Response (500 Internal Server Error - Timeout):**
+```json
+{
+  "error": "Clear table command timed out",
+  "cancelledJobs": [3, 5],
+  "timestamp": "2025-09-28T17:45:30.123Z"
+}
+```
+
+**Response Fields:**
+- `cleared`: Boolean indicating if the table was successfully cleared
+- `cancelledJobs`: Array of job IDs that were cancelled before clearing
+- `exitCode`: Exit code from the clear_table command
+- `stdout`: Standard output from the clear_table command
+- `stderr`: Standard error from the clear_table command
+- `timestamp`: ISO 8601 timestamp of when the operation completed
+
+**Example:**
+```bash
+curl -X DELETE http://localhost:5000/deduper/clear-db-table
+```
+
+**Notes:**
+- This operation runs synchronously (not queued)
+- Has a 60-second timeout for safety
+- The `-y` flag bypasses the microservice's confirmation prompt
+- All active jobs are cancelled before the table is cleared
+- Use with caution - this removes all deduplication analysis data
+
 ---
 
 ## Environment Configuration

@@ -18,6 +18,10 @@ Routes see the docs [API Reference](docs/API_REFERENCE.md)
 
 - set off a job use GET `http://127.0.0.1:5000/deduper/jobs`
 
+## Queues
+
+Each route ( and therefore microservice) has its own queue.
+
 ## .env
 
 ```

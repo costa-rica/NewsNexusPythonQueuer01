@@ -222,3 +222,80 @@ def health_check():
             'error': str(e),
             'timestamp': datetime.utcnow().isoformat()
         }), 500
+
+@bp_deduper.route('/deduper/clear-db-table', methods=['DELETE'])
+def clear_db_table():
+    """DELETE /deduper/clear-db-table - Cancel all jobs and clear the database table"""
+    try:
+        # Get environment variables
+        deduper_path = os.getenv('PATH_TO_MICROSERVICE_DEDUPER')
+        python_venv = os.getenv('PATH_TO_PYTHON_VENV')
+
+        if not deduper_path or not python_venv:
+            return jsonify({'error': 'Missing environment variables for deduper or python venv'}), 500
+
+        # Step 1: Cancel all pending/running jobs
+        cancelled_jobs = []
+        for job_id, job in jobs.items():
+            if job['status'] in [JobStatus.PENDING, JobStatus.RUNNING]:
+                try:
+                    # Kill the process if it's running
+                    if 'process' in job and job['process'].poll() is None:
+                        job['process'].terminate()
+                        # Give it a moment, then force kill if needed
+                        time.sleep(0.5)
+                        if job['process'].poll() is None:
+                            job['process'].kill()
+
+                    job['status'] = JobStatus.CANCELLED
+                    job['completed_at'] = datetime.now(timezone.utc).isoformat()
+                    cancelled_jobs.append(job_id)
+                except Exception as e:
+                    print(f"[Clear] Warning: Failed to cancel job {job_id}: {str(e)}")
+
+        # Step 2: Execute clear_table command immediately (not queued)
+        cmd = [
+            f"{python_venv}/bin/python",
+            f"{deduper_path}/main.py",
+            "clear_table", "-y"
+        ]
+
+        print(f"[Clear] Executing clear_table command: {' '.join(cmd)}")
+        print(f"[Clear] Cancelled {len(cancelled_jobs)} jobs: {cancelled_jobs}")
+
+        # Run synchronously and capture output
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60  # 60 second timeout for safety
+        )
+
+        # Return response
+        response = {
+            'cleared': result.returncode == 0,
+            'cancelledJobs': cancelled_jobs,
+            'exitCode': result.returncode,
+            'stdout': result.stdout,
+            'stderr': result.stderr,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }
+
+        if result.returncode == 0:
+            return jsonify(response), 200
+        else:
+            response['error'] = 'Clear table command failed'
+            return jsonify(response), 500
+
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            'error': 'Clear table command timed out',
+            'cancelledJobs': cancelled_jobs,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }), 500
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'cancelledJobs': cancelled_jobs if 'cancelled_jobs' in locals() else [],
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }), 500
