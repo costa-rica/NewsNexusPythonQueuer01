@@ -25,7 +25,7 @@ def create_job_id():
     job_counter += 1
     return job_id
 
-def run_deduper_job(job_id):
+def run_deduper_job(job_id, report_id=None):
     """Run the deduper microservice in a separate thread"""
     try:
         jobs[job_id]['status'] = JobStatus.RUNNING
@@ -42,11 +42,13 @@ def run_deduper_job(job_id):
         # Build command to run deduper
         cmd = [
             f"{python_venv}/bin/python",
-            f"{deduper_path}/main.py",
-            "analyze_fast"  # Default command for deduplication
+            f"{deduper_path}/src/main.py",
+            "analyze_fast"
         ]
 
-        # Note: deduper commands don't take arguments, they process all available data
+        # Add report_id argument if provided
+        if report_id is not None:
+            cmd.extend(["--report-id", str(report_id)])
 
         # Run the subprocess with output visible in terminal
         print(f"[Job {job_id}] Starting deduper: {' '.join(cmd)}")
@@ -101,6 +103,34 @@ def create_deduper_job():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@bp_deduper.route('/deduper/jobs/reportId/<int:report_id>', methods=['GET'])
+def create_deduper_job_by_report_id(report_id):
+    """GET /deduper/jobs/reportId/<report_id> - Trigger a deduper job for a specific report ID"""
+    try:
+        # Create new job
+        job_id = create_job_id()
+        jobs[job_id] = {
+            'id': job_id,
+            'reportId': report_id,
+            'status': JobStatus.PENDING,
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'logs': []
+        }
+
+        # Start job in background thread with report_id
+        thread = threading.Thread(target=run_deduper_job, args=(job_id, report_id))
+        thread.daemon = True
+        thread.start()
+
+        return jsonify({
+            'jobId': job_id,
+            'reportId': report_id,
+            'status': JobStatus.PENDING
+        }), 201
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @bp_deduper.route('/deduper/jobs/<job_id>', methods=['GET'])
 def get_job_status(job_id):
     """GET /deduper/jobs/:id - Fetch job status, timestamps, and logs"""
@@ -113,6 +143,9 @@ def get_job_status(job_id):
         'status': job['status'],
         'createdAt': job['created_at']
     }
+
+    if 'reportId' in job:
+        response['reportId'] = job['reportId']
 
     if 'started_at' in job:
         response['startedAt'] = job['started_at']

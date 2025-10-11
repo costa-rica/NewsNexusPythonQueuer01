@@ -54,6 +54,31 @@ Trigger a new deduper job to run the `analyze_fast` command.
 curl http://localhost:5000/deduper/jobs
 ```
 
+### GET /deduper/jobs/reportId/{reportId}
+Trigger a new deduper job for a specific report ID. This runs the `analyze_fast` command with the `--report-id` argument to process articles associated with a specific report.
+
+**Parameters:**
+- `reportId` (integer): The report ID to analyze
+
+**Response (201 Created):**
+```json
+{
+  "jobId": 1,
+  "reportId": 84,
+  "status": "pending"
+}
+```
+
+**Example:**
+```bash
+curl http://localhost:5000/deduper/jobs/reportId/84
+```
+
+**Notes:**
+- This endpoint is used to deduplicate articles for a specific report
+- The command executed is: `{python_venv}/bin/python {deduper_path}/src/main.py analyze_fast --report-id {reportId}`
+- Use this when you want to analyze only articles associated with a particular report instead of all articles
+
 ### GET /deduper/jobs/{jobId}
 Fetch detailed status, timestamps, and logs for a specific job.
 
@@ -64,6 +89,7 @@ Fetch detailed status, timestamps, and logs for a specific job.
 ```json
 {
   "jobId": 1,
+  "reportId": 84,
   "status": "completed",
   "createdAt": "2025-09-28T17:45:30.123Z",
   "startedAt": "2025-09-28T17:45:30.456Z",
@@ -80,6 +106,17 @@ Fetch detailed status, timestamps, and logs for a specific job.
   "error": "Job not found"
 }
 ```
+
+**Response Fields:**
+- `jobId`: The unique job identifier
+- `reportId`: (optional) The report ID if the job was created for a specific report
+- `status`: Current job status (see below)
+- `createdAt`: ISO 8601 timestamp when job was created
+- `startedAt`: ISO 8601 timestamp when job started running
+- `completedAt`: ISO 8601 timestamp when job finished
+- `exitCode`: Process exit code (0 = success, non-zero = error)
+- `stdout`: Standard output message
+- `stderr`: Standard error message
 
 **Job Status Values:**
 - `pending`: Job created but not yet started
@@ -268,10 +305,20 @@ The service requires these environment variables (configured in `.env`):
 
 ### Deduper Job Execution
 - Jobs run the `analyze_fast` command from NewsNexusDeduper02
-- Command executed: `{python_venv}/bin/python {deduper_path}/main.py analyze_fast`
+- Default command: `{python_venv}/bin/python {deduper_path}/src/main.py analyze_fast`
+- Report-specific command: `{python_venv}/bin/python {deduper_path}/src/main.py analyze_fast --report-id {reportId}`
 - Output streams live to the Flask application terminal
 - Jobs run asynchronously in background threads
 - Child processes terminate when parent service stops
+
+### Job Types
+1. **General Deduplication** (`GET /deduper/jobs`)
+   - Processes all available articles
+   - No report filtering
+
+2. **Report-Specific Deduplication** (`GET /deduper/jobs/reportId/{reportId}`)
+   - Processes only articles associated with the specified report ID
+   - Useful for targeted analysis of specific reports
 
 ### Job ID Generation
 - Job IDs are sequential integers starting from 1
@@ -279,9 +326,10 @@ The service requires these environment variables (configured in `.env`):
 - Simple, human-readable format for easy reference
 
 ### Job Creation
-- Each GET request to `/deduper/jobs` creates a new job
+- Each GET request to `/deduper/jobs` or `/deduper/jobs/reportId/{reportId}` creates a new job
 - No idempotency checks - each request creates a separate job
 - Jobs are identified by sequential integer IDs
+- Report-specific jobs store the `reportId` in job metadata for reference
 
 ---
 
