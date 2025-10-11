@@ -289,7 +289,7 @@ def clear_db_table():
         # Step 2: Execute clear_table command immediately (not queued)
         cmd = [
             f"{python_venv}/bin/python",
-            f"{deduper_path}/main.py",
+            f"{deduper_path}/src/main.py",
             "clear_table", "-y"
         ]
 
