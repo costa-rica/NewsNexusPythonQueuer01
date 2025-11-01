@@ -25,6 +25,8 @@ Each route ( and therefore microservice) has its own queue.
 ## .env
 
 ```
+NAME_DB=newsnexus09.db
+PATH_DATABASE=/Users/nick/Documents/_databases/NewsNexus09/
 PATH_TO_PYTHON_VENV=/Users/nick/Documents/_environments/news_nexus
 PATH_TO_MICROSERVICE_DEDUPER=/Users/nick/Documents/NewsNexusDeduper02
 PATH_TO_MICROSERVICE_LOCATION_SCORER=/Users/nick/Documents/NewsNexusClassifierLocationScorer01
