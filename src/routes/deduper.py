@@ -4,6 +4,7 @@ import threading
 import time
 import os
 from datetime import datetime, timezone
+from loguru import logger
 
 bp_deduper = Blueprint('deduper', __name__)
 
@@ -29,7 +30,6 @@ def run_deduper_job(job_id, report_id=None):
     """Run the deduper microservice in a separate thread"""
     try:
         jobs[job_id]['status'] = JobStatus.RUNNING
-        # jobs[job_id]['started_at'] = datetime.utcnow().isoformat()
         jobs[job_id]['started_at'] = datetime.now(timezone.utc).isoformat()
 
         # Get deduper path from environment
@@ -50,10 +50,16 @@ def run_deduper_job(job_id, report_id=None):
         if report_id is not None:
             cmd.extend(["--report-id", str(report_id)])
 
-        # Run the subprocess with output visible in terminal
-        print(f"[Job {job_id}] Starting deduper: {' '.join(cmd)}")
+        # CRITICAL: Inject NAME_APP for child process to write to its own log file
+        child_env = os.environ.copy()
+        child_env['NAME_APP'] = 'NewsNexusDeduper02'
+
+        logger.info(f"[Job {job_id}] Starting deduper with NAME_APP=NewsNexusDeduper02: {' '.join(cmd)}")
+
+        # Run the subprocess with injected environment
         process = subprocess.Popen(
             cmd,
+            env=child_env,
             text=True
         )
 
@@ -62,20 +68,21 @@ def run_deduper_job(job_id, report_id=None):
         # Wait for completion
         exit_code = process.wait()
 
-        jobs[job_id]['stdout'] = f"Process output streamed to terminal"
-        jobs[job_id]['stderr'] = f"Process errors streamed to terminal"
         jobs[job_id]['exit_code'] = process.returncode
         jobs[job_id]['completed_at'] = datetime.now(timezone.utc).isoformat()
 
         if process.returncode == 0:
             jobs[job_id]['status'] = JobStatus.COMPLETED
+            logger.info(f"[Job {job_id}] Deduper completed successfully with exit code 0")
         else:
             jobs[job_id]['status'] = JobStatus.FAILED
+            logger.error(f"[Job {job_id}] Deduper failed with exit code {process.returncode}")
 
     except Exception as e:
         jobs[job_id]['status'] = JobStatus.FAILED
         jobs[job_id]['error'] = str(e)
         jobs[job_id]['completed_at'] = datetime.now(timezone.utc).isoformat()
+        logger.exception(f"[Job {job_id}] Deduper job failed with exception: {str(e)}")
 
 @bp_deduper.route('/deduper/jobs', methods=['GET'])
 def create_deduper_job():
@@ -90,6 +97,8 @@ def create_deduper_job():
             'logs': []
         }
 
+        logger.info(f"Created deduper job {job_id}")
+
         # Start job in background thread
         thread = threading.Thread(target=run_deduper_job, args=(job_id,))
         thread.daemon = True
@@ -101,6 +110,7 @@ def create_deduper_job():
         }), 201
 
     except Exception as e:
+        logger.error(f"Failed to create deduper job: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @bp_deduper.route('/deduper/jobs/reportId/<int:report_id>', methods=['GET'])
@@ -117,6 +127,8 @@ def create_deduper_job_by_report_id(report_id):
             'logs': []
         }
 
+        logger.info(f"Created deduper job {job_id} for report ID {report_id}")
+
         # Start job in background thread with report_id
         thread = threading.Thread(target=run_deduper_job, args=(job_id, report_id))
         thread.daemon = True
@@ -129,6 +141,7 @@ def create_deduper_job_by_report_id(report_id):
         }), 201
 
     except Exception as e:
+        logger.error(f"Failed to create deduper job for report ID {report_id}: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @bp_deduper.route('/deduper/jobs/<job_id>', methods=['GET'])
@@ -172,11 +185,13 @@ def get_job_status(job_id):
 def cancel_job(job_id):
     """POST /deduper/jobs/:id/cancel - Terminate a running job"""
     if job_id not in jobs:
+        logger.warning(f"Attempted to cancel non-existent job {job_id}")
         return jsonify({'error': 'Job not found'}), 404
 
     job = jobs[job_id]
 
     if job['status'] not in [JobStatus.PENDING, JobStatus.RUNNING]:
+        logger.warning(f"Cannot cancel job {job_id} with status {job['status']}")
         return jsonify({
             'error': f'Cannot cancel job with status: {job["status"]}'
         }), 400
@@ -193,6 +208,8 @@ def cancel_job(job_id):
         job['status'] = JobStatus.CANCELLED
         job['completed_at'] = datetime.now(timezone.utc).isoformat()
 
+        logger.info(f"Job {job_id} cancelled successfully")
+
         return jsonify({
             'jobId': job_id,
             'status': JobStatus.CANCELLED,
@@ -200,6 +217,7 @@ def cancel_job(job_id):
         })
 
     except Exception as e:
+        logger.error(f"Failed to cancel job {job_id}: {str(e)}")
         return jsonify({'error': f'Failed to cancel job: {str(e)}'}), 500
 
 @bp_deduper.route('/deduper/jobs/list', methods=['GET'])
@@ -284,7 +302,7 @@ def clear_db_table():
                     job['completed_at'] = datetime.now(timezone.utc).isoformat()
                     cancelled_jobs.append(job_id)
                 except Exception as e:
-                    print(f"[Clear] Warning: Failed to cancel job {job_id}: {str(e)}")
+                    logger.warning(f"[Clear] Failed to cancel job {job_id}: {str(e)}")
 
         # Step 2: Execute clear_table command immediately (not queued)
         cmd = [
@@ -293,12 +311,17 @@ def clear_db_table():
             "clear_table", "-y"
         ]
 
-        print(f"[Clear] Executing clear_table command: {' '.join(cmd)}")
-        print(f"[Clear] Cancelled {len(cancelled_jobs)} jobs: {cancelled_jobs}")
+        # CRITICAL: Inject NAME_APP for child process
+        child_env = os.environ.copy()
+        child_env['NAME_APP'] = 'NewsNexusDeduper02'
+
+        logger.info(f"[Clear] Executing clear_table command: {' '.join(cmd)}")
+        logger.info(f"[Clear] Cancelled {len(cancelled_jobs)} jobs: {cancelled_jobs}")
 
         # Run synchronously and capture output
         result = subprocess.run(
             cmd,
+            env=child_env,
             capture_output=True,
             text=True,
             timeout=60  # 60 second timeout for safety
@@ -315,18 +338,22 @@ def clear_db_table():
         }
 
         if result.returncode == 0:
+            logger.info(f"[Clear] Successfully cleared database table")
             return jsonify(response), 200
         else:
+            logger.error(f"[Clear] Failed to clear database table with exit code {result.returncode}")
             response['error'] = 'Clear table command failed'
             return jsonify(response), 500
 
     except subprocess.TimeoutExpired:
+        logger.error("[Clear] Clear table command timed out after 60 seconds")
         return jsonify({
             'error': 'Clear table command timed out',
             'cancelledJobs': cancelled_jobs,
             'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
     except Exception as e:
+        logger.exception(f"[Clear] Unexpected error during clear table operation: {str(e)}")
         return jsonify({
             'error': str(e),
             'cancelledJobs': cancelled_jobs if 'cancelled_jobs' in locals() else [],
