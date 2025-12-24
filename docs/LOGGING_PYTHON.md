@@ -8,18 +8,18 @@ This document specifies logging requirements for all Python applications in the 
 
 ### Required Variables
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `NAME_APP` | Application name used in log filenames | `NewsNexusPythonQueuer01` |
-| `APP_ENV` | Environment mode (`production`, `development`, etc.) | `production` |
-| `PATH_TO_LOGS` | Directory path for log file storage (production only) | `/var/log/newsnexus` |
+| Variable          | Description                                           | Example                   |
+| ----------------- | ----------------------------------------------------- | ------------------------- |
+| `NAME_APP`        | Application name used in log filenames                | `NewsNexusPythonQueuer01` |
+| `RUN_ENVIRONMENT` | Environment mode (`production`, `development`, etc.)  | `production`              |
+| `PATH_TO_LOGS`    | Directory path for log file storage (production only) | `/var/log/newsnexus`      |
 
 ### Optional Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LOG_MAX_SIZE` | `10485760` | Maximum log file size in bytes (10 MB default) |
-| `LOG_MAX_FILES` | `10` | Maximum number of rotated log files to retain |
+| Variable        | Default    | Description                                    |
+| --------------- | ---------- | ---------------------------------------------- |
+| `LOG_MAX_SIZE`  | `10485760` | Maximum log file size in bytes (10 MB default) |
+| `LOG_MAX_FILES` | `10`       | Maximum number of rotated log files to retain  |
 
 ## Log File Naming Convention
 
@@ -31,7 +31,7 @@ This document specifies logging requirements for all Python applications in the 
 
 ## Configuration Requirements
 
-### Production Environment (`APP_ENV=production`)
+### Production Environment (`RUN_ENVIRONMENT=production`)
 
 - **Output**: File-based logging in `PATH_TO_LOGS` directory
 - **Rotation**: Size-based rotation using `LOG_MAX_SIZE` and `LOG_MAX_FILES`
@@ -39,7 +39,7 @@ This document specifies logging requirements for all Python applications in the 
 - **Process Safety**: Enable `enqueue=True` for thread/process-safe logging
 - **Child Process Handling**: Environment Injection - each process writes to its own log file
 
-### Development Environment (`APP_ENV!=production`)
+### Development Environment (`RUN_ENVIRONMENT!=production`)
 
 - **Output**: Console/stdout with colorized output
 - **Format**: Simplified format optimized for readability
@@ -74,9 +74,9 @@ def configure_logging():
             "If spawning child processes, inject NAME_APP into the child's environment."
         )
 
-    app_env = os.getenv('APP_ENV', 'development')
+    RUN_ENVIRONMENT = os.getenv('RUN_ENVIRONMENT', 'development')
 
-    if app_env == 'production':
+    if RUN_ENVIRONMENT == 'production':
         # Production: File-based logging with rotation
         log_path = os.getenv('PATH_TO_LOGS')
         log_max_size = int(os.getenv('LOG_MAX_SIZE', '10485760'))  # 10 MB default
@@ -110,7 +110,7 @@ def configure_logging():
             colorize=True
         )
 
-    logger.info(f"Logging configured for {app_env} environment")
+    logger.info(f"Logging configured for {RUN_ENVIRONMENT} environment")
 
     return logger
 ```
@@ -228,6 +228,7 @@ if __name__ == "__main__":
 All processes (parent and child) must write to their own unique log files. When spawning a child process, the parent **must inject** a unique `NAME_APP` into the child's environment variables. This ensures the child's call to `configure_logging()` generates a distinct log file rather than attempting to write to the parent's file.
 
 **Key Principles:**
+
 1. Each microservice/process has its own log file identified by `NAME_APP`
 2. Multiple instances of the same microservice can safely write to the same log file (loguru's `enqueue=True` handles concurrent writes)
 3. Parent processes inject `NAME_APP` when spawning child processes
@@ -236,6 +237,7 @@ All processes (parent and child) must write to their own unique log files. When 
 ### Log File Separation
 
 Example log file distribution:
+
 - `NewsNexusPythonQueuer01.log` - Flask queuer service (parent)
 - `NewsNexusDeduper02.log` - Deduper microservice (child process)
 - `NewsNexusClassifierLocationScorer01.log` - Location scorer microservice (child process)
@@ -286,6 +288,7 @@ def run_deduper_job(job_id):
 ```
 
 **Important:** Replace `'NAME_CHILD_PROCESS'` with the actual child process name. For example:
+
 - For deduper: `child_env['NAME_APP'] = 'NewsNexusDeduper02'`
 - For location scorer: `child_env['NAME_APP'] = 'NewsNexusClassifierLocationScorer01'`
 
@@ -344,7 +347,7 @@ This intentional failure ensures engineers are alerted to properly configure the
 ## Implementation Checklist
 
 - [ ] Install loguru: `pip install loguru`
-- [ ] Add required environment variables to `.env` (`NAME_APP`, `APP_ENV`, `PATH_TO_LOGS`, `LOG_MAX_SIZE`, `LOG_MAX_FILES`)
+- [ ] Add required environment variables to `.env` (`NAME_APP`, `RUN_ENVIRONMENT`, `PATH_TO_LOGS`, `LOG_MAX_SIZE`, `LOG_MAX_FILES`)
 - [ ] Create shared `logging_config.py` module with `configure_logging()` function
 - [ ] Update Flask apps to integrate loguru with InterceptHandler
 - [ ] Update FastAPI apps to integrate loguru with InterceptHandler
@@ -362,13 +365,13 @@ This intentional failure ensures engineers are alerted to properly configure the
 
 Use appropriate log levels following these guidelines:
 
-| Level | Usage |
-|-------|-------|
-| `DEBUG` | Detailed debugging information (development only) |
-| `INFO` | General informational messages (requests, job status, etc.) |
-| `WARNING` | Warning messages (deprecated features, recoverable errors) |
-| `ERROR` | Error messages (exceptions, failed operations) |
-| `CRITICAL` | Critical errors (service failures, data corruption) |
+| Level      | Usage                                                       |
+| ---------- | ----------------------------------------------------------- |
+| `DEBUG`    | Detailed debugging information (development only)           |
+| `INFO`     | General informational messages (requests, job status, etc.) |
+| `WARNING`  | Warning messages (deprecated features, recoverable errors)  |
+| `ERROR`    | Error messages (exceptions, failed operations)              |
+| `CRITICAL` | Critical errors (service failures, data corruption)         |
 
 ## Example Log Output
 
@@ -408,6 +411,7 @@ When migrating from Python's standard `logging` module to loguru:
 ## Support
 
 For questions or issues with logging configuration:
+
 - Review this document
 - Check [Loguru documentation](https://loguru.readthedocs.io/)
 - Test configuration in development environment first

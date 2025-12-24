@@ -17,7 +17,7 @@ def configure_logging():
 
     Environment Variables:
         NAME_APP (required): Application name for log file naming
-        APP_ENV (optional): Environment mode ('production' or 'development', defaults to 'development')
+        RUN_ENVIRONMENT (optional): Environment mode ('production' or 'development', defaults to 'development')
         PATH_TO_LOGS (required in production): Directory for log files
         LOG_MAX_SIZE (optional): Max log file size in bytes (default: 10485760 = 10 MB)
         LOG_MAX_FILES (optional): Max number of rotated log files (default: 10)
@@ -40,9 +40,9 @@ def configure_logging():
             "If spawning child processes, inject NAME_APP into the child's environment."
         )
 
-    app_env = os.getenv('APP_ENV', 'development')
+    RUN_ENVIRONMENT = os.getenv('RUN_ENVIRONMENT', 'development')
 
-    if app_env == 'production':
+    if RUN_ENVIRONMENT == 'production':
         # Production: File-based logging with rotation
         log_path = os.getenv('PATH_TO_LOGS')
         log_max_size = int(os.getenv('LOG_MAX_SIZE', '10485760'))  # 10 MB default
@@ -68,7 +68,7 @@ def configure_logging():
             diagnose=True  # Enable variable values in exceptions
         )
 
-        logger.info(f"Logging configured for {app_env} environment: {log_file}")
+        logger.info(f"Logging configured for {RUN_ENVIRONMENT} environment: {log_file}")
     else:
         # Development: Console logging with colors
         logger.add(
@@ -78,6 +78,6 @@ def configure_logging():
             colorize=True
         )
 
-        logger.info(f"Logging configured for {app_env} environment (console output)")
+        logger.info(f"Logging configured for {RUN_ENVIRONMENT} environment (console output)")
 
     return logger
