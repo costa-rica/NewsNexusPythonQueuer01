@@ -14,7 +14,7 @@ Content-Type: application/json
 ```
 
 ## Response Format
-All responses are in JSON format. Successful responses return appropriate HTTP status codes (200, 201) with relevant data. Error responses return 4xx/5xx status codes with error details.
+All responses are in JSON format. Successful responses return appropriate HTTP status codes (200, 201) with relevant data. Error responses return 4xx/5xx status codes with a standardized error structure containing a machine-readable error code, human-readable message, HTTP status, and optional details. See the [Error Handling](#error-handling) section for complete documentation.
 
 ---
 
@@ -49,6 +49,18 @@ Trigger a new deduper job to run the `analyze_fast` command.
 }
 ```
 
+**Response (500 Internal Server Error):**
+```json
+{
+  "error": {
+    "code": "JOB_CREATION_FAILED",
+    "message": "Failed to create deduper job",
+    "status": 500,
+    "details": "ValueError: Invalid configuration"
+  }
+}
+```
+
 **Example:**
 ```bash
 curl http://localhost:5000/deduper/jobs
@@ -66,6 +78,18 @@ Trigger a new deduper job for a specific report ID. This runs the `analyze_fast`
   "jobId": 1,
   "reportId": 84,
   "status": "pending"
+}
+```
+
+**Response (500 Internal Server Error):**
+```json
+{
+  "error": {
+    "code": "JOB_CREATION_FAILED",
+    "message": "Failed to create deduper job for report ID 84",
+    "status": 500,
+    "details": "ValueError: NAME_CHILD_PROCESS_DEDUPER environment variable is required"
+  }
 }
 ```
 
@@ -103,7 +127,11 @@ Fetch detailed status, timestamps, and logs for a specific job.
 **Response (404 Not Found):**
 ```json
 {
-  "error": "Job not found"
+  "error": {
+    "code": "JOB_NOT_FOUND",
+    "message": "Job not found",
+    "status": 404
+  }
 }
 ```
 
@@ -148,14 +176,34 @@ Terminate a running or pending job.
 **Response (400 Bad Request):**
 ```json
 {
-  "error": "Cannot cancel job with status: completed"
+  "error": {
+    "code": "INVALID_JOB_STATE",
+    "message": "Cannot cancel job with status: completed",
+    "status": 400
+  }
 }
 ```
 
 **Response (404 Not Found):**
 ```json
 {
-  "error": "Job not found"
+  "error": {
+    "code": "JOB_NOT_FOUND",
+    "message": "Job not found",
+    "status": 404
+  }
+}
+```
+
+**Response (500 Internal Server Error):**
+```json
+{
+  "error": {
+    "code": "JOB_CANCELLATION_FAILED",
+    "message": "Failed to cancel job",
+    "status": 500,
+    "details": "Process termination failed"
+  }
 }
 ```
 
@@ -217,9 +265,12 @@ Service health check and system status.
 **Response (500 Internal Server Error):**
 ```json
 {
-  "status": "unhealthy",
-  "error": "Missing environment variables",
-  "timestamp": "2025-09-28T17:45:30.123Z"
+  "error": {
+    "code": "HEALTH_CHECK_FAILED",
+    "message": "Health check failed",
+    "status": 500,
+    "details": "Missing environment variables"
+  }
 }
 ```
 
@@ -251,22 +302,31 @@ Cancel all running/pending deduper jobs and clear the database table used by the
 **Response (500 Internal Server Error - Command Failed):**
 ```json
 {
-  "cleared": false,
-  "cancelledJobs": [3, 5],
-  "exitCode": 1,
-  "stdout": "",
-  "stderr": "Error clearing table...",
-  "error": "Clear table command failed",
-  "timestamp": "2025-09-28T17:45:30.123Z"
+  "error": {
+    "code": "CLEAR_TABLE_FAILED",
+    "message": "Clear table command failed",
+    "status": 500,
+    "details": {
+      "exitCode": 1,
+      "cancelledJobs": [3, 5],
+      "stdout": "",
+      "stderr": "Error clearing table..."
+    }
+  }
 }
 ```
 
 **Response (500 Internal Server Error - Timeout):**
 ```json
 {
-  "error": "Clear table command timed out",
-  "cancelledJobs": [3, 5],
-  "timestamp": "2025-09-28T17:45:30.123Z"
+  "error": {
+    "code": "CLEAR_TABLE_TIMEOUT",
+    "message": "Clear table command timed out after 60 seconds",
+    "status": 500,
+    "details": {
+      "cancelledJobs": [3, 5]
+    }
+  }
 }
 ```
 
@@ -343,11 +403,43 @@ The service requires these environment variables (configured in `.env`):
 - `500 Internal Server Error`: Server-side error
 
 ### Error Response Format
+All errors follow a consistent structure with machine-readable error codes:
+
 ```json
 {
-  "error": "Description of the error"
+  "error": {
+    "code": "ERROR_CODE_HERE",
+    "message": "Human-readable error message",
+    "status": 500
+  }
 }
 ```
+
+With optional details for debugging (sanitized in production):
+```json
+{
+  "error": {
+    "code": "JOB_CREATION_FAILED",
+    "message": "Failed to create deduper job",
+    "status": 500,
+    "details": "ValueError: Invalid configuration"
+  }
+}
+```
+
+### Common Error Codes
+
+| Code | Status | Description |
+|------|--------|-------------|
+| `JOB_NOT_FOUND` | 404 | The requested job does not exist |
+| `INVALID_JOB_STATE` | 400 | Job is in an invalid state for the requested operation |
+| `JOB_CREATION_FAILED` | 500 | Failed to create a new job |
+| `JOB_CANCELLATION_FAILED` | 500 | Failed to cancel the job |
+| `MISSING_CONFIGURATION` | 500 | Required environment variables are missing |
+| `CLEAR_TABLE_FAILED` | 500 | Clear table command failed |
+| `CLEAR_TABLE_TIMEOUT` | 500 | Clear table command timed out |
+| `HEALTH_CHECK_FAILED` | 500 | Health check encountered an error |
+| `INTERNAL_ERROR` | 500 | Unexpected server error |
 
 ---
 
