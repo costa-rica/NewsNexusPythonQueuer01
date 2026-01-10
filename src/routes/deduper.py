@@ -5,6 +5,7 @@ import time
 import os
 from datetime import datetime, timezone
 from loguru import logger
+from ..utils.errors import error_response
 
 bp_deduper = Blueprint('deduper', __name__)
 
@@ -50,11 +51,16 @@ def run_deduper_job(job_id, report_id=None):
         if report_id is not None:
             cmd.extend(["--report-id", str(report_id)])
 
-        # CRITICAL: Inject NAME_APP for child process to write to its own log file
-        child_env = os.environ.copy()
-        child_env['NAME_APP'] = 'NewsNexusDeduper02'
+        # CRITICAL: Get child process NAME_APP from environment variable
+        child_process_name = os.getenv('NAME_CHILD_PROCESS_DEDUPER')
+        if not child_process_name:
+            raise ValueError("NAME_CHILD_PROCESS_DEDUPER environment variable is required")
 
-        logger.info(f"[Job {job_id}] Starting deduper with NAME_APP=NewsNexusDeduper02: {' '.join(cmd)}")
+        # Inject NAME_APP for child process to write to its own log file
+        child_env = os.environ.copy()
+        child_env['NAME_APP'] = child_process_name
+
+        logger.info(f"[Job {job_id}] Starting deduper with NAME_APP={child_process_name}: {' '.join(cmd)}")
 
         # Run the subprocess with injected environment
         process = subprocess.Popen(
@@ -111,7 +117,12 @@ def create_deduper_job():
 
     except Exception as e:
         logger.error(f"Failed to create deduper job: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return error_response(
+            code='JOB_CREATION_FAILED',
+            message='Failed to create deduper job',
+            status=500,
+            details=str(e)
+        )
 
 @bp_deduper.route('/deduper/jobs/reportId/<int:report_id>', methods=['GET'])
 def create_deduper_job_by_report_id(report_id):
@@ -142,13 +153,22 @@ def create_deduper_job_by_report_id(report_id):
 
     except Exception as e:
         logger.error(f"Failed to create deduper job for report ID {report_id}: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return error_response(
+            code='JOB_CREATION_FAILED',
+            message=f'Failed to create deduper job for report ID {report_id}',
+            status=500,
+            details=str(e)
+        )
 
 @bp_deduper.route('/deduper/jobs/<job_id>', methods=['GET'])
 def get_job_status(job_id):
     """GET /deduper/jobs/:id - Fetch job status, timestamps, and logs"""
     if job_id not in jobs:
-        return jsonify({'error': 'Job not found'}), 404
+        return error_response(
+            code='JOB_NOT_FOUND',
+            message='Job not found',
+            status=404
+        )
 
     job = jobs[job_id]
     response = {
@@ -186,15 +206,21 @@ def cancel_job(job_id):
     """POST /deduper/jobs/:id/cancel - Terminate a running job"""
     if job_id not in jobs:
         logger.warning(f"Attempted to cancel non-existent job {job_id}")
-        return jsonify({'error': 'Job not found'}), 404
+        return error_response(
+            code='JOB_NOT_FOUND',
+            message='Job not found',
+            status=404
+        )
 
     job = jobs[job_id]
 
     if job['status'] not in [JobStatus.PENDING, JobStatus.RUNNING]:
         logger.warning(f"Cannot cancel job {job_id} with status {job['status']}")
-        return jsonify({
-            'error': f'Cannot cancel job with status: {job["status"]}'
-        }), 400
+        return error_response(
+            code='INVALID_JOB_STATE',
+            message=f'Cannot cancel job with status: {job["status"]}',
+            status=400
+        )
 
     try:
         # Kill the process if it's running
@@ -218,7 +244,12 @@ def cancel_job(job_id):
 
     except Exception as e:
         logger.error(f"Failed to cancel job {job_id}: {str(e)}")
-        return jsonify({'error': f'Failed to cancel job: {str(e)}'}), 500
+        return error_response(
+            code='JOB_CANCELLATION_FAILED',
+            message='Failed to cancel job',
+            status=500,
+            details=str(e)
+        )
 
 @bp_deduper.route('/deduper/jobs/list', methods=['GET'])
 def get_jobs():
@@ -268,11 +299,13 @@ def health_check():
         return jsonify(checks)
 
     except Exception as e:
-        return jsonify({
-            'status': 'unhealthy',
-            'error': str(e),
-            'timestamp': datetime.utcnow().isoformat()
-        }), 500
+        logger.exception("Health check failed")
+        return error_response(
+            code='HEALTH_CHECK_FAILED',
+            message='Health check failed',
+            status=500,
+            details=str(e)
+        )
 
 @bp_deduper.route('/deduper/clear-db-table', methods=['DELETE'])
 def clear_db_table():
@@ -283,7 +316,12 @@ def clear_db_table():
         python_venv = os.getenv('PATH_TO_PYTHON_VENV')
 
         if not deduper_path or not python_venv:
-            return jsonify({'error': 'Missing environment variables for deduper or python venv'}), 500
+            return error_response(
+                code='MISSING_CONFIGURATION',
+                message='Missing required environment variables',
+                status=500,
+                details='PATH_TO_MICROSERVICE_DEDUPER and PATH_TO_PYTHON_VENV must be configured'
+            )
 
         # Step 1: Cancel all pending/running jobs
         cancelled_jobs = []
@@ -311,11 +349,16 @@ def clear_db_table():
             "clear_table", "-y"
         ]
 
-        # CRITICAL: Inject NAME_APP for child process
-        child_env = os.environ.copy()
-        child_env['NAME_APP'] = 'NewsNexusDeduper02'
+        # CRITICAL: Get child process NAME_APP from environment variable
+        child_process_name = os.getenv('NAME_CHILD_PROCESS_DEDUPER')
+        if not child_process_name:
+            raise ValueError("NAME_CHILD_PROCESS_DEDUPER environment variable is required")
 
-        logger.info(f"[Clear] Executing clear_table command: {' '.join(cmd)}")
+        # Inject NAME_APP for child process
+        child_env = os.environ.copy()
+        child_env['NAME_APP'] = child_process_name
+
+        logger.info(f"[Clear] Executing clear_table command with NAME_APP={child_process_name}: {' '.join(cmd)}")
         logger.info(f"[Clear] Cancelled {len(cancelled_jobs)} jobs: {cancelled_jobs}")
 
         # Run synchronously and capture output
@@ -342,20 +385,34 @@ def clear_db_table():
             return jsonify(response), 200
         else:
             logger.error(f"[Clear] Failed to clear database table with exit code {result.returncode}")
-            response['error'] = 'Clear table command failed'
-            return jsonify(response), 500
+            return error_response(
+                code='CLEAR_TABLE_FAILED',
+                message='Clear table command failed',
+                status=500,
+                details={
+                    'exitCode': result.returncode,
+                    'cancelledJobs': cancelled_jobs,
+                    'stdout': result.stdout,
+                    'stderr': result.stderr
+                }
+            )
 
     except subprocess.TimeoutExpired:
         logger.error("[Clear] Clear table command timed out after 60 seconds")
-        return jsonify({
-            'error': 'Clear table command timed out',
-            'cancelledJobs': cancelled_jobs,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 500
+        return error_response(
+            code='CLEAR_TABLE_TIMEOUT',
+            message='Clear table command timed out after 60 seconds',
+            status=500,
+            details={'cancelledJobs': cancelled_jobs}
+        )
     except Exception as e:
         logger.exception(f"[Clear] Unexpected error during clear table operation: {str(e)}")
-        return jsonify({
-            'error': str(e),
-            'cancelledJobs': cancelled_jobs if 'cancelled_jobs' in locals() else [],
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 500
+        return error_response(
+            code='INTERNAL_ERROR',
+            message='Unexpected error during clear table operation',
+            status=500,
+            details={
+                'cancelledJobs': cancelled_jobs if 'cancelled_jobs' in locals() else [],
+                'error': str(e)
+            }
+        )

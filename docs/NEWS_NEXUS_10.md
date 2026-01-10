@@ -1,6 +1,6 @@
-# News Nexus 09
+# News Nexus 10
 
-- 2025-09-26
+- 2026-01-04
 
 ## Overview
 
@@ -10,10 +10,14 @@ Article collecting and analysis of news articles from various sources. The Consu
 
 ### Core Platform
 
-- Database: NewsNexusDb09 (TypeScript)
-- SQLite, Sequelize
-- API: NewsNexusApi09 (JavaScript)
-- Web App: NewsNexusWeb09 (JavaScript)
+- Database: NewsNexus10Db (TypeScript: Sequelize)
+  - SQLite,
+- API: NewsNexus10API (JavaScript: Express.js)
+- Web App: NewsNexus10Portal (JavaScript: Next.js)
+- News Article Services: NewsNexusServices (JavaScript)
+  - Collection: NewsNexusRequesterGoogleRss02, NewsNexusRequesterNewsApi01, NewsNexusRequesterNewsDataIo01, NewsNexusRequesterGNews02
+  - Analysis: NewsNexusSemanticScorer02 (JavaScript), NewsNexusClassifierLocationScorer01 (Python)
+  - Quality Control: NewsNexusDeduper02 (Python)
 
 ### Collection Tools
 
@@ -22,13 +26,9 @@ Article collecting and analysis of news articles from various sources. The Consu
 - NewsNexusRequesterNewsDataIo01 (JavaScript): Article collections, requests from https://newsdata.io.
 - NewsNexusRequesterGNews02 (JavaScript): Article collections, requests from https://gnews.io.
 
-### Queuer Tools
-
-- NewsNexusPythonQueuer01 (Python): This Flask application will queue up Python micro services on the News Nexus platform.
-
 ### Analysis Tools
 
-- NewsNexusDeduper02 (Python): Deduplication of articles.
+- NewsNexusDeduper02 (Python): Deduplication of articles. Calculates cosine similarity using all-MiniLM-L6-v2 embeddings for semantic duplicate detection.
 - NewsNexusSemanticScorer02 (JavaScript): uses the Xenova/paraphrase-MiniLM-L6-v2 open source feature-extraction model from HuggingFace. This app, uses key words based on the solicitation requirements and placed into a .csv file to rate articles. The highest rated category for the article is stored as the Nexus Semantic Rating in the database. The rating is an indicator for how relevant the article is to the CPSC’s requirements. 0% is not related at all and 100% is very relevant. This application is run after each of the articles collection apps are run, triggered by the news article collection application using the child-process node.js package.
 - NewsNexusClassifierLocationScorer01 (Python):is a Python application that uses the facebook/bart-large-mnli zero shot classification open source model from HuggingFace. This application is used to determine how likely the events of the article are to have occurred in the United States. A rating of 0% is unlikely and 100% is very likely to have occurred in the US. The application again stores the rating in the database.
 

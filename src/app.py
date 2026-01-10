@@ -4,7 +4,7 @@ import logging
 # to relative (works when importing src.app)
 from .routes.index import bp_index
 from .routes.deduper import bp_deduper
-from .logging_config import configure_logging
+from .config.logging import configure_logging
 
 # load .env file -> needed for prod (Ubuntu/pm2 setup)
 from pathlib import Path
@@ -45,11 +45,11 @@ def create_app():
 
     # Replace Flask's logger handlers with InterceptHandler
     app.logger.handlers = [InterceptHandler()]
-    app.logger.setLevel(logging.INFO)
+    app.logger.setLevel(logging.DEBUG)  # Let loguru filter by level
 
     # Also intercept werkzeug logger (Flask's development server)
     logging.getLogger('werkzeug').handlers = [InterceptHandler()]
-    logging.getLogger('werkzeug').setLevel(logging.INFO)
+    logging.getLogger('werkzeug').setLevel(logging.DEBUG)  # Let loguru filter by level
 
     # Register blueprints
     app.register_blueprint(bp_index)
